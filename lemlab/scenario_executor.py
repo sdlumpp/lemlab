@@ -587,8 +587,7 @@ class ScenarioExecutor:
             with mp.Pool(initializer=_par_step_prosumers_init,
                          initargs=(_par_step_prosumers_pre,
                                    self.config,
-                                   path_weather),
-                         processes=1
+                                   path_weather)
                          ) as pool:
                 # main simulation loop, step from ts_delivery start to end
                 while ts_delivery_current <= ts_delivery_end:

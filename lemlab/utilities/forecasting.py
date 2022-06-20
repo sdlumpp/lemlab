@@ -375,14 +375,15 @@ class ForecastManager:
                     if self.plant_dict[plant].get("type") in ["pv", "fixedgen"]:
                         df_temp = self._update_forecast(id_plant=plant)
                         df_temp.rename(columns={'power': f'power_{plant}'}, inplace=True)
+                        df_temp[f'power_{plant}'] = df_temp[f'power_{plant}'] * self.plant_dict[plant].get("power")
                         self.fcast_table = self.fcast_table.join(df_temp, how="outer", lsuffix=f"duplicate")
 
                     elif self.plant_dict[plant].get("type") in ["wind"]:
                         df_temp = self._update_forecast(id_plant=plant, column="wind_speed")
                         df_temp.rename(columns={'wind_speed': f'wind_speed_{plant}'}, inplace=True)
-
                         self.fcast_table = self.fcast_table.join(df_temp, how="outer", lsuffix="duplicate")
                         self.fcast_table[f'power_{plant}'] = 0
+
                     elif self.plant_dict[plant].get("type") == "hh":
                         df_temp = self._update_forecast(id_plant=plant)
                         df_temp.rename(columns={'power': f'power_{plant}'}, inplace=True)
@@ -430,7 +431,7 @@ class ForecastManager:
                         json.dump(self.config_dict, write_file)
             else:
                 self.fcast_table[f'price'] = \
-                    (self.config_dict["max_bid"] - self.config_dict["min_offer"]) / 2 * self.config_dict["mpc_horizon"]
+                    (self.config_dict["ma_bid_max"] + self.config_dict["ma_offer_min"]) / 2
 
             # predict settlement prices
             # TODO: only predict those settlement prices that have not yet been posted to the DB

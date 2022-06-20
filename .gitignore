@@ -128,8 +128,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
 lem_analysis/monte_carlo/simulations/
-
 lem_analysis/
-
 scripts_case_study_1/
+
+scenarios/
+simulation_results/

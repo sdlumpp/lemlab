@@ -492,7 +492,6 @@ class Prosumer:
         :return: None
         """
         self.mpc_table = ft.read_dataframe(f"{self.path}/fcasts_current.ft").set_index("timestamp")
-
         # if no plants, revert to simple rule-based controller
         if controller is None and len(self._get_list_plants()) - len(self._get_list_plants(plant_type="hh")) == 0:
             controller = "hh"
@@ -705,10 +704,13 @@ class Prosumer:
                 expr_right = model.sum_pv[t]
                 make_const = 0
                 for bat in self._get_list_plants(plant_type="bat"):
+                    # if battery cannot charge from the grid
                     if not self.plant_dict[bat].get("charge_from_grid"):
+                        # then sum of battery charging powers
                         expr_left += model.p_bat_in[bat, t]
-                        make_const = 1
+                        make_const = 1 # if condition never occurs, then don't make constraint
                 if make_const:
+                    # cannot be greater than the sum of pv powers
                     model.con_batt_charge_grid.add(expr=(expr_left <= expr_right))
 
             # define initial battery soc, determined using first term of battery power and battery soc in the prev step
@@ -819,7 +821,6 @@ class Prosumer:
                 dict_mpc_table[f"power_{self.config_dict['id_meter_grid']}"][t_d] = p_load[i]
             # Save results to file, which will be used as basis for controller_real_time set points and market trading
             self.mpc_table = pd.DataFrame.from_dict(dict_mpc_table)
-
         ft.write_dataframe(self.mpc_table.reset_index().rename(columns={"index": "timestamp"}),
                            f"{self.path}/controller_mpc.ft")
 
@@ -859,12 +860,12 @@ class Prosumer:
 
             if self.config_dict["mpc_price_fcast"] == "flat":
                 dict_price_history.update(
-                    {"weighted_average_price": (self.config_dict["max_bid"] + self.config_dict["min_offer"]) / 2,
+                    {"weighted_average_price": (self.config_dict["ma_bid_max"] + self.config_dict["ma_offer_min"]) / 2,
                      "total_energy_traded": 0
                      }
                 )
             elif len(market_results) == 0:
-                dict_price_history.update({"weighted_average_price": self.config_dict["max_bid"],
+                dict_price_history.update({"weighted_average_price": self.config_dict["ma_bid_max"],
                                            "total_energy_traded": 0})
             else:
                 total_energy = market_results[db_obj.db_param.QTY_ENERGY_TRADED].sum()
@@ -874,7 +875,7 @@ class Prosumer:
                     dict_price_history.update({"weighted_average_price": total_paid/total_energy/euro_kwh_to_sigma_wh,
                                                "total_energy_traded": total_energy})
                 else:
-                    dict_price_history.update({"weighted_average_price": self.config_dict["max_bid"],
+                    dict_price_history.update({"weighted_average_price": self.config_dict["ma_bid_max"],
                                                "total_energy_traded": 0})
             df_price_history.loc[self.ts_delivery_prev] = dict_price_history
         else:
@@ -884,7 +885,7 @@ class Prosumer:
 
             if self.config_dict["mpc_price_fcast"] == "flat":
                 dict_price_history.update({
-                    "weighted_average_price": (self.config_dict["max_bid"] - self.config_dict["min_offer"]) / 2,
+                    "weighted_average_price": (self.config_dict["ma_bid_max"] - self.config_dict["ma_offer_min"]) / 2,
                     "total_energy_traded": 0})
             elif self.ts_delivery_prev in market_results.index:
                 dict_price_history.update({
@@ -894,7 +895,7 @@ class Prosumer:
                     "total_energy_traded": 0})
             else:
                 dict_price_history.update({
-                    "weighted_average_price": self.config_dict["max_bid"],
+                    "weighted_average_price": self.config_dict["ma_bid_max"],
                     "total_energy_traded": 0})
             df_price_history.loc[self.ts_delivery_prev] = dict_price_history
 
@@ -925,10 +926,10 @@ class Prosumer:
     def update_user_preferences(self, db_obj):
         user_info = db_obj.get_info_user(self.config_dict["id_user"])
 
-        self.config_dict["max_bid"] = \
+        self.config_dict["ma_bid_max"] = \
             float(user_info.loc[0, db_obj.db_param.PRICE_ENERGY_BID_MAX])\
             / db_obj.db_param.EURO_TO_SIGMA * 1000
-        self.config_dict["min_offer"] = \
+        self.config_dict["ma_offer_min"] = \
             float(user_info.loc[0, db_obj.db_param.PRICE_ENERGY_OFFER_MIN])\
             / db_obj.db_param.EURO_TO_SIGMA * 1000
         self.config_dict["ma_strategy"] = \
@@ -1003,7 +1004,7 @@ class Prosumer:
         euro_kwh_to_sigma_wh = db_obj.db_param.EURO_TO_SIGMA / 1000
 
         delta = 0
-        gradient = (self.config_dict["max_bid"] - self.config_dict["min_offer"]) / (
+        gradient = (self.config_dict["ma_bid_max"] - self.config_dict["ma_offer_min"]) / (
                     self.config_dict["ma_horizon"] - 1)
 
         for t_s in index_pot_bids:
@@ -1038,17 +1039,17 @@ class Prosumer:
 
                 if self.config_dict["ma_strategy"] == "zi":
                     # determine energy price,
-                    price = self.config_dict["min_offer"] \
-                            + random() * (self.config_dict["max_bid"] - self.config_dict["min_offer"])
+                    price = self.config_dict["ma_offer_min"] \
+                            + random() * (self.config_dict["ma_bid_max"] - self.config_dict["ma_offer_min"])
                     price = round(price, 4)
                     price *= euro_kwh_to_sigma_wh
 
                 else:
                     if energy_position < 0:
-                        price = round(self.config_dict["max_bid"] - delta, 6)
+                        price = round(self.config_dict["ma_bid_max"] - delta, 6)
                         price *= euro_kwh_to_sigma_wh
                     else:
-                        price = round(self.config_dict["min_offer"] + delta, 6)
+                        price = round(self.config_dict["ma_offer_min"] + delta, 6)
                         price *= euro_kwh_to_sigma_wh
 
                 if post_position:

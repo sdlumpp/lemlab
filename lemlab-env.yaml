@@ -18,3 +18,4 @@ dependencies:
     - tqdm
     - tensorflow
     - lz4
+    - seaborn

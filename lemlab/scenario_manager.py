@@ -15,7 +15,7 @@ from typing import Tuple
 import pandas as pd
 import feather as ft
 import math
-
+from pathlib import Path
 
 class Scenario:
     """
@@ -252,7 +252,8 @@ class Scenario:
                 except FileNotFoundError:
                     pass
             else:
-                os.mkdir(path)
+                path = Path(path)
+                path.mkdir(parents=True)
         time.sleep(0.1)
 
     def __create_lem(self) -> None:
